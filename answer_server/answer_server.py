@@ -15,16 +15,21 @@ import mysqldb
 
 LISTEN_ON_PORT=8000
 
-class AnswerServer(object):
+class AnswerServer(BaseHTTPServer.HTTPServer):
+    '''
+    Ex. URL: http://mono.stanford.edu:8000/question?qID=NumStudents&className=CS144
+    '''
     
     HTTP_BAD_REQUEST = 400
     
     def __init__(self, mysqldHostname='localhost', mysqldPort=3306, listenOnPort=LISTEN_ON_PORT):
+        #super(AnswerServer, self).__init__(('', listenOnPort), AnswerServerRequestHandler) 
+        BaseHTTPServer.HTTPServer.__init__(self, ('', listenOnPort), AnswerServerRequestHandler) 
         self.mysqldHostname = mysqldHostname
         self.mysqldPort = mysqldPort
         self.listenOnPort = listenOnPort
         
-        self.mysql = mysqldb.MySQLDB(user='paepcke')
+        self.mysqldb = mysqldb.MySQLDB(user='paepcke')
         self.myHostname = socket.gethostname()
         
         self.edxCache = {}
@@ -44,6 +49,9 @@ class AnswerServerRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         
         parms = urlparse.urlparse(self.path)
         action = parms[AnswerServerRequestHandler.URL_ACTION_POS]
+        if action == '/':
+            self.serveQuestionPage()
+            return
         if action != '/question':
             self.send_error(AnswerServer.HTTP_BAD_REQUEST, 'Server only answers questions.')
             return
@@ -60,7 +68,7 @@ class AnswerServerRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.send_error(AnswerServer.HTTP_BAD_REQUEST, 'No question ID was included in the URL')
             return
         
-        if qID == 'qNumStud':
+        if qID == 'NumStudents':
             resHTML = self.answerQNumStudents(qID, queryDict)
         elif qID == 'otherQ':
             resHTML = 'Answer to otherQ: 42'
@@ -76,9 +84,7 @@ class AnswerServerRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/html")
         self.end_headers()
-        self.wfile.write("<html><head><title>Answer</title></head>")
-        self.wfile.write("<body><p>%s</p>" % resHTML)
-        self.wfile.write("</body></html>")
+        self.sendHTMLResponse(resHTML)
 
     def answerQNumStudents(self, qID, queryDict):
         '''
@@ -94,38 +100,58 @@ class AnswerServerRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                  response to the browser.
         '''
         try:
-            className = queryDict
+            className = queryDict['className']
+            if isinstance(className, list) and len(className) > 0:
+                className = className[0]
+            else:
+                self.send_error(AnswerServer.HTTP_BAD_REQUEST, 'Class name is in wrong format: %s' % str(className))
         except KeyError:
             self.send_error(AnswerServer.HTTP_BAD_REQUEST, "The query did not include a class name.")
             return None
         
         # In cache? Get this question's cache entry if it exists:
-        numStudentsCacheEntry = self.edxCache.get(qID, None)
+        numStudentsCacheEntry = self.server.edxCache.get(qID, None)
         # If no cache entry exists for this question, create one:
         if numStudentsCacheEntry is None:
-            self.edxCache[qID] = {}
+            self.server.edxCache[qID] = {}
         else:
             cachedRes = numStudentsCacheEntry.get(className, None)
             if cachedRes is not None:
                 return 'Number of students in %s is %d' % (className, cachedRes)
         
         # Not in cache: do the query and update the cache:
-        for res in self.mysqldb.query('SELECT DISTINCT anon_screen_name FROM EdxTrackEvent WHERE course_id == %s;', className):
+        # The double-% is needed to make the %like% for MySQL:
+        query = "SELECT COUNT(DISTINCT anon_screen_name) FROM Edx.EdxTrackEvent WHERE course_id LIKE '%%%s%%';" % className
+        for res in self.server.mysqldb.query(query):
+            # Results come as a tuple, like (349,):
+            numStudents = res[0]
             # Cache for future:
-            self.edxCache[qID][className] = res 
-            return 'Number of students in %s is %d' % (className, res)  
+            self.server.edxCache[qID][className] = numStudents 
+            return 'Number of students in %s is %s' % (className, str(numStudents))  
         return 
     
+    def serveQuestionPage(self):
+        with open(os.path.join(os.path.dirname(__file__), 'html/questionList.html')) as fd:
+            page = ''.join(fd.readlines())
+        self.send_response(200)
+        self.send_header("Content-type", "text/html")
+        self.end_headers()
+        self.wfile.write(page)
+        
+    
+    def sendHTMLResponse(self, resHTML):
+        self.wfile.write("<html><head><title>Answer</title><style>body {background-color:#b0c4de; }</style></head>")
+        self.wfile.write("<body><p>%s</p>" % resHTML)
+        self.wfile.write("</body></html>")
+        
+    
 if __name__ == '__main__':
-    answerServer = AnswerServer()
-    server_class = BaseHTTPServer.HTTPServer
-    #httpd = server_class((answerServer.myHostname, answerServer.listenOnPort), AnswerServerRequestHandler)
-    httpd = server_class(('', answerServer.listenOnPort), AnswerServerRequestHandler)
-    print time.asctime(), "Server Starts - %s:%s" % (answerServer.myHostname, answerServer.listenOnPort)
+    httpd = AnswerServer()
+    print time.asctime(), "Server Starts - %s:%s" % (httpd.myHostname, httpd.listenOnPort)
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
         pass
     httpd.server_close()
-    print time.asctime(), "Server Stops - %s:%s" % (answerServer.myHostname, answerServer.listenOnPort)
+    print time.asctime(), "Server Stops - %s:%s" % (httpd.myHostname, httpd.listenOnPort)
     
