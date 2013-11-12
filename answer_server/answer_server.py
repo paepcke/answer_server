@@ -15,11 +15,12 @@ import mysqldb
 
 LISTEN_ON_PORT=8000
 
-class AnswerServer(object):
+class AnswerServer(BaseHTTPServer.HTTPServer):
     
     HTTP_BAD_REQUEST = 400
-    
+
     def __init__(self, mysqldHostname='localhost', mysqldPort=3306, listenOnPort=LISTEN_ON_PORT):
+        super(AnswerServer, self).__init__(('', listenOnPort), AnswerServerRequestHandler)
         self.mysqldHostname = mysqldHostname
         self.mysqldPort = mysqldPort
         self.listenOnPort = listenOnPort
@@ -117,11 +118,8 @@ class AnswerServerRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         return 
     
 if __name__ == '__main__':
-    answerServer = AnswerServer()
-    server_class = BaseHTTPServer.HTTPServer
-    #httpd = server_class((answerServer.myHostname, answerServer.listenOnPort), AnswerServerRequestHandler)
-    httpd = server_class(('', answerServer.listenOnPort), AnswerServerRequestHandler)
-    print time.asctime(), "Server Starts - %s:%s" % (answerServer.myHostname, answerServer.listenOnPort)
+    httpd = AnswerServer()
+    print time.asctime(), "Server Starts - %s:%s" % (socket.gethostname(), httpd.listenOnPort)
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
