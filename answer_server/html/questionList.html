@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <style>
+      body
+      {
+      background-color:#b0c4de;
+      }
+    </style>
+  </head>
+
+  <body>
+
+    <h1>Frequently Sought Answers</h1>
+
+    <form action="http://mono.stanford.edu:8000/question" method="get">
+      How many students are enrolled in
+      <select name="className">
+	<option value="Engineering/CS144/Introduction_to_Computer_Networking">Engineering/CS144/Introduction_to_Computer_Networking</option>
+	<option value="Medicine/SciWrite/Fall2013">Medicine/SciWrite/Fall2013</option>
+	<option value="Engineering/QMSE01/Quantum_Mechanics_for_Scientists_and_Engineers">Engineering/QMSE01/Quantum_Mechanics_for_Scientists_and_Engineers</option>
+      </select> 
+
+      <input name="qID" type="submit" value="NumStudents">
+
+    </form>
+  </body>
+</html>
