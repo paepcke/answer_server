@@ -11,3 +11,7 @@ setup.py~
 socket
 time
 urlparse
+bin/
+include/
+lib/
+local/
