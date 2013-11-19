@@ -6,7 +6,6 @@ Created on Nov 11, 2013
 '''
 
 import BaseHTTPServer
-import argparse
 import getpass
 import os
 import socket
@@ -21,13 +20,38 @@ LISTEN_ON_PORT=8000
 
 class AnswerServer(BaseHTTPServer.HTTPServer):
     '''
+    HTTP server that serves out an HTML page with questions
+    people ask, and queries a MySQL db when browser users click
+    on one of the questions. Example query that browsers emit
+    to this server from the Web page: 
     Ex. URL: http://mono.stanford.edu:8000/question?qID=NumStudents&className=CS144
+    The served page is in html/questionList.html.
+    
+    The MySQL db may run anywhere, and the __init__() method takes
+    information about user/pwd/host/, etc.
+    
+    This script is usually started into the background via nohup by 
+    the companion Python script 'answer_server_starter.py',
+    which collects the args nicely from the user, and then instantiates
+    this object.
     '''
     
     HTTP_BAD_REQUEST = 400
 
-    def __init__(self, mysqldHostname='localhost', mysqldPort=3306, mysqldUser=getpass.getuser(), mysqldPWD='', listenOnPort=LISTEN_ON_PORT):
-        #super(AnswerServer, self).__init__(('', listenOnPort), AnswerServerRequestHandler) 
+    def __init__(self, 
+                 mysqldHostname='localhost', 
+                 mysqldPort=3306, 
+                 mysqldUser=getpass.getuser(), 
+                 mysqldPWD='',
+                 mysqldPWDFile='', 
+                 listenOnPort=LISTEN_ON_PORT):
+        if len(mysqldPWD) == 0 and len(mysqldPWDFile) > 0:
+            # No MySQL PWD given, but a file w/ the pwd in it is given:
+            with open(mysqldPWDFile, 'r') as fd:
+                mysqldPWD = fd.readline()
+            # Delete the file with the PWD in it
+            os.remove(mysqldPWDFile)
+            
         BaseHTTPServer.HTTPServer.__init__(self, ('', listenOnPort), AnswerServerRequestHandler) 
         self.mysqldHostname = mysqldHostname
         self.mysqldPort = mysqldPort
@@ -280,40 +304,29 @@ class AnswerServerRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         return res
     
 if __name__ == '__main__':
+
+    # Usually started into the background via nohup by 
+    # companion Python script 'answer_server_starter.py',
+    # which collects the args nicely from the user. Because
+    # of this, no error checking here.
+        
+    # Expected args: mysqlHost, mysqlPort, mysqlUsername, mysqlPWDFile, mysqlDB
+    # where mysqlPWDFile is a tmp file that contains the MySQL PWD, or empty string.
+    # The pwd is placed in that file by answer_server_starter. The __init__() method
+    # above reads the pwd, then removes the file. This mechanism is used so the pwd
+    # doesn't show up in ps -ef. 
     
-    parser = argparse.ArgumentParser(prog='answer_server')
-    parser.add_argument('-u', '--mysql-user',
-                        help='Have answer server log into the MySQL server under given user name',
-                        dest='mysqlUsername',
-                        default=getpass.getuser()
-                        )
-    parser.add_argument('-p', '--mysql-password', 
-                        help='Ask for password to the MySQL server.', 
-                        dest='askPwd',
-                        action='store_true');
-
-    parser.add_argument('-m', '--mysql-host', 
-                        help='Where the MySQL server is located: a host name. Default: localhost', 
-                        dest='mysqlHost',
-                        default='localhost');
-    parser.add_argument('-t', '--mysql-port', 
-                        help='Port where the MySQL server is listening. Default: 3306', 
-                        dest='mysqlPort',
-                        default=3306);
-                        
-    args = parser.parse_args()
-
-    if args.askPwd:
-        mysqlPWD = getpass.getpass("Password for %s on MySQL server at %s: " % (args.mysqlUsername, args.mysqlHost))
-    else:
-        mysqlPWD = ''
-                                   
-    httpd = AnswerServer(mysqldHostname=args.mysqlHost,
-                         mysqldPort=args.mysqlPort, 
-                         mysqldUser=args.mysqlUsername,
-                         mysqldPWD=mysqlPWD
+    mysqlHost = sys.argv[1]
+    mysqlPort = int(sys.argv[2])
+    mysqlUsername = sys.argv[3]
+    mysqlPWDFile = sys.argv[4]
+    
+    httpd = AnswerServer(mysqldHostname=mysqlHost,
+                         mysqldPort=mysqlPort,
+                         mysqldUser=mysqlUsername,
+                         mysqldPWDFile= mysqlPWDFile
                          )
-    print time.asctime(), "Server Starts - %s:%s; MySQL server: %s@%s" % (httpd.myHostname, httpd.listenOnPort, args.mysqlUsername, args.mysqlHost)
+    print time.asctime(), "Server Starts - %s:%s; MySQL server: %s@%s" % (httpd.myHostname, httpd.listenOnPort, mysqlUsername, mysqlHost)
     
     try:
         httpd.serve_forever()
