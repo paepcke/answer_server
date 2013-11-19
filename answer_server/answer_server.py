@@ -6,8 +6,11 @@ Created on Nov 11, 2013
 '''
 
 import BaseHTTPServer
+import argparse
+import getpass
 import os
 import socket
+import sys
 import time
 import urlparse
 
@@ -23,14 +26,14 @@ class AnswerServer(BaseHTTPServer.HTTPServer):
     
     HTTP_BAD_REQUEST = 400
 
-    def __init__(self, mysqldHostname='localhost', mysqldPort=3306, listenOnPort=LISTEN_ON_PORT):
+    def __init__(self, mysqldHostname='localhost', mysqldPort=3306, mysqldUser=getpass.getuser(), mysqldPWD='', listenOnPort=LISTEN_ON_PORT):
         #super(AnswerServer, self).__init__(('', listenOnPort), AnswerServerRequestHandler) 
         BaseHTTPServer.HTTPServer.__init__(self, ('', listenOnPort), AnswerServerRequestHandler) 
         self.mysqldHostname = mysqldHostname
         self.mysqldPort = mysqldPort
         self.listenOnPort = listenOnPort
         
-        self.mysqldb = mysqldb.MySQLDB(user='paepcke')
+        self.mysqldb = mysqldb.MySQLDB(host=mysqldHostname, port=mysqldPort, user=mysqldUser, passwd=mysqldPWD)
         self.myHostname = socket.gethostname()
         
         self.edxCache = {}
@@ -277,8 +280,41 @@ class AnswerServerRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         return res
     
 if __name__ == '__main__':
-    httpd = AnswerServer()
-    print time.asctime(), "Server Starts - %s:%s" % (httpd.myHostname, httpd.listenOnPort)
+    
+    parser = argparse.ArgumentParser(prog='answer_server')
+    parser.add_argument('-u', '--mysql-user',
+                        help='Have answer server log into the MySQL server under given user name',
+                        dest='mysqlUsername',
+                        default=getpass.getuser()
+                        )
+    parser.add_argument('-p', '--mysql-password', 
+                        help='Ask for password to the MySQL server.', 
+                        dest='askPwd',
+                        action='store_true');
+
+    parser.add_argument('-m', '--mysql-host', 
+                        help='Where the MySQL server is located: a host name. Default: localhost', 
+                        dest='mysqlHost',
+                        default='localhost');
+    parser.add_argument('-t', '--mysql-port', 
+                        help='Port where the MySQL server is listening. Default: 3306', 
+                        dest='mysqlPort',
+                        default=3306);
+                        
+    args = parser.parse_args()
+
+    if args.askPwd:
+        mysqlPWD = getpass.getpass("Password for %s on MySQL server at %s: " % (args.mysqlUsername, args.mysqlHost))
+    else:
+        mysqlPWD = ''
+                                   
+    httpd = AnswerServer(mysqldHostname=args.mysqlHost,
+                         mysqldPort=args.mysqlPort, 
+                         mysqldUser=args.mysqlUsername,
+                         mysqldPWD=mysqlPWD
+                         )
+    print time.asctime(), "Server Starts - %s:%s; MySQL server: %s@%s" % (httpd.myHostname, httpd.listenOnPort, args.mysqlUsername, args.mysqlHost)
+    
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

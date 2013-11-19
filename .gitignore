@@ -1,2 +1,13 @@
 .project
 .pydevproject
+BaseHTTPServer
+build/
+dist/
+json_to_relation.egg-info/
+mysqldb
+nose-1.3.0-py2.7.egg/
+os
+setup.py~
+socket
+time
+urlparse
